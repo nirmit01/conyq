@@ -1,0 +1,44 @@
+{
+  "name": "my-et-ai-news",
+  "version": "1.0.0",
+  "description": "My ET — AI Native News Experience",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:init": "node scripts/init-db.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.22.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@google/generative-ai": "^0.24.1",
+    "@types/better-sqlite3": "^7.6.10",
+    "@types/fluent-ffmpeg": "^2.1.24",
+    "@types/node": "^20.12.7",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.0",
+    "@types/uuid": "^9.0.8",
+    "autoprefixer": "^10.4.19",
+    "axios": "^1.6.8",
+    "better-sqlite3": "^9.5.0",
+    "clsx": "^2.1.1",
+    "date-fns": "^3.6.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "framer-motion": "^11.1.9",
+    "lucide-react": "^0.378.0",
+    "next": "14.2.3",
+    "openai": "^4.47.1",
+    "postcss": "^8.4.38",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-markdown": "^9.0.1",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.3"
+  }
+}

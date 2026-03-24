@@ -1,0 +1,98 @@
+/* styles/globals.css */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Playfair Display';
+  --font-body: 'Source Sans 3';
+  --font-mono: 'JetBrains Mono';
+
+  --color-brand: #ea580c;
+  --color-brand-light: #fb923c;
+  --color-ink: #2a2318;
+  --color-paper: #f8f7f4;
+  --color-muted: #8e7d65;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body), system-ui, sans-serif;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display), Georgia, serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f0ede6; }
+::-webkit-scrollbar-thumb { background: #c4bcaa; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a89b84; }
+
+/* Prose for article content */
+.prose-et {
+  @apply leading-relaxed text-ink-800;
+}
+.prose-et p {
+  @apply mb-4;
+}
+.prose-et h2 {
+  @apply text-xl font-semibold mt-6 mb-3 text-ink-900;
+  font-family: var(--font-display);
+}
+
+/* AI Badge */
+.ai-badge {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  background: linear-gradient(135deg, #fb923c20, #f9731620);
+  color: var(--color-brand);
+  border: 1px solid #fb923c40;
+}
+
+/* Animated gradient for loading states */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #f0ede6 25%, #e8e4dc 50%, #f0ede6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Page transition */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: fadeSlideIn 0.35s ease-out;
+}
+
+/* Markdown rendered content */
+.markdown-content h2 { @apply text-lg font-semibold mt-5 mb-2 text-ink-900; font-family: var(--font-display); }
+.markdown-content h3 { @apply text-base font-semibold mt-4 mb-2 text-ink-800; }
+.markdown-content p  { @apply mb-3 text-ink-700 leading-relaxed; }
+.markdown-content ul { @apply list-disc pl-5 mb-3 space-y-1; }
+.markdown-content li { @apply text-ink-700; }
+.markdown-content strong { @apply font-semibold text-ink-900; }
+
+/* Ticker tape */
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ticker-inner { animation: ticker 30s linear infinite; }
+.ticker-inner:hover { animation-play-state: paused; }
