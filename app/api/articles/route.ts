@@ -5,7 +5,8 @@ import { getDb } from '@/lib/db';
 import { fetchAllFeeds } from '@/lib/rss';
 import type { Article } from '@/lib/types';
 
-export const revalidate = 1800;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
