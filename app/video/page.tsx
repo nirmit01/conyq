@@ -1,38 +1,200 @@
 // app/video/page.tsx
+// Canvas-based in-browser video generator — no FFmpeg needed
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import type { Article } from '@/lib/types';
 import { timeAgo, getCategoryColor } from '@/lib/utils';
-import { Film, Loader2, CheckCircle, AlertCircle, Play } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import { Film, Loader2, Download, Play, Square, RotateCcw } from 'lucide-react';
 
-interface VideoResult {
-  jobId: string;
-  status: 'processing' | 'done' | 'error';
-  videoPath?: string;
-  script?: string;
-  error?: string;
-  provider?: string;
-}
+type VideoStatus = 'idle' | 'scripting' | 'rendering' | 'done' | 'error';
 
 export default function VideoPage() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selected, setSelected] = useState<Article | null>(null);
+  const [status, setStatus] = useState<VideoStatus>('idle');
+  const [script, setScript] = useState('');
+  const [provider, setProvider] = useState('');
+  const [error, setError] = useState('');
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [result, setResult] = useState<VideoResult | null>(null);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animFrameRef = useRef<number>(0);
+  const startTimeRef = useRef<number>(0);
+  const DURATION = 30; // seconds
 
   useEffect(() => {
-    fetch('/api/articles?limit=8')
+    fetch('/api/articles?limit=10')
       .then(r => r.json())
       .then(({ articles: arts }) => { setArticles(arts); setLoading(false); });
   }, []);
 
+  // Canvas animation loop
+  const renderFrame = (timestamp: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !selected) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const elapsed = (timestamp - startTimeRef.current) / 1000;
+    const t = Math.min(elapsed / DURATION, 1);
+    setProgress(Math.round(t * 100));
+
+    if (t >= 1) {
+      setPlaying(false);
+      setProgress(100);
+      drawFrame(ctx, canvas, selected, script, 1);
+      return;
+    }
+
+    drawFrame(ctx, canvas, selected, script, t);
+    animFrameRef.current = requestAnimationFrame(renderFrame);
+  };
+
+  const drawFrame = (
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    article: Article,
+    scriptText: string,
+    t: number,
+  ) => {
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // Background gradient (animated)
+    const hue = 20 + t * 10;
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, `hsl(${hue}, 40%, 8%)`);
+    grad.addColorStop(1, `hsl(${hue + 20}, 30%, 12%)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Animated accent line
+    const lineW = W * (0.05 + t * 0.9);
+    ctx.fillStyle = '#ea580c';
+    ctx.fillRect(40, H - 8, lineW - 40, 4);
+
+    // MY ET watermark
+    ctx.font = 'bold 18px Georgia, serif';
+    ctx.fillStyle = '#ea580c';
+    ctx.textAlign = 'left';
+    ctx.fillText('My ET', 40, 44);
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillText('AI Native News', 40, 64);
+
+    // Category badge
+    const cat = (article.category ?? 'news').toUpperCase();
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillStyle = '#fb923c';
+    const catW = ctx.measureText(cat).width + 20;
+    const catX = W - catW - 40;
+    ctx.fillStyle = 'rgba(234,88,12,0.25)';
+    ctx.beginPath();
+    ctx.roundRect(catX, 30, catW, 24, 6);
+    ctx.fill();
+    ctx.fillStyle = '#fb923c';
+    ctx.textAlign = 'right';
+    ctx.fillText(cat, W - 50, 47);
+
+    // Title — fade in
+    const titleAlpha = Math.min(1, t * 5);
+    ctx.globalAlpha = titleAlpha;
+    const titleLines = wrapText(ctx, article.title, W - 80, 'bold 28px Georgia, serif');
+    ctx.font = 'bold 28px Georgia, serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    const titleStartY = H / 2 - (titleLines.length * 38) / 2;
+    titleLines.forEach((line, i) => {
+      ctx.fillText(line, 40, titleStartY + i * 38);
+    });
+    ctx.globalAlpha = 1;
+
+    // Script text — scrolls in after t > 0.2
+    if (t > 0.2 && scriptText) {
+      const scriptAlpha = Math.min(1, (t - 0.2) * 4);
+      ctx.globalAlpha = scriptAlpha * 0.75;
+      ctx.font = '15px sans-serif';
+      ctx.fillStyle = '#d4c4a8';
+      ctx.textAlign = 'left';
+      const maxChars = Math.floor((t - 0.2) / 0.8 * scriptText.length);
+      const visibleScript = scriptText.slice(0, maxChars);
+      const scriptLines = wrapText(ctx, visibleScript, W - 80, '15px sans-serif').slice(0, 3);
+      const scriptY = H - 80;
+      scriptLines.forEach((line, i) => {
+        ctx.fillText(line, 40, scriptY + i * 22);
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // Timer bar
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(0, H - 4, W, 4);
+    ctx.fillStyle = '#ea580c';
+    ctx.fillRect(0, H - 4, W * t, 4);
+  };
+
+  const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, font: string): string[] => {
+    ctx.font = font;
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let current = '';
+    for (const word of words) {
+      const test = current ? `${current} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth) {
+        if (current) lines.push(current);
+        current = word;
+      } else {
+        current = test;
+      }
+    }
+    if (current) lines.push(current);
+    return lines.slice(0, 4);
+  };
+
+  const startPlayback = () => {
+    if (!canvasRef.current || !selected) return;
+    cancelAnimationFrame(animFrameRef.current);
+    setPlaying(true);
+    setProgress(0);
+    startTimeRef.current = performance.now();
+    animFrameRef.current = requestAnimationFrame(renderFrame);
+  };
+
+  const stopPlayback = () => {
+    cancelAnimationFrame(animFrameRef.current);
+    setPlaying(false);
+  };
+
+  const resetVideo = () => {
+    stopPlayback();
+    setProgress(0);
+    const canvas = canvasRef.current;
+    if (canvas && selected) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) drawFrame(ctx, canvas, selected, script, 0);
+    }
+  };
+
+  const downloadFrame = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = `my-et-${selected?.id ?? 'video'}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
   const generate = async () => {
-    if (!selected || generating) return;
-    setGenerating(true);
-    setResult(null);
+    if (!selected || status === 'scripting' || status === 'rendering') return;
+    setStatus('scripting');
+    setScript('');
+    setError('');
+    stopPlayback();
+    setProgress(0);
+
     try {
       const res = await fetch('/api/video', {
         method: 'POST',
@@ -40,43 +202,79 @@ export default function VideoPage() {
         body: JSON.stringify({ articleId: selected.id }),
       });
       const data = await res.json();
-      setResult(data);
+      setScript(data.script ?? selected.summary);
+      setProvider(data.provider ?? 'mock');
+      setStatus('rendering');
+
+      // Draw initial frame on canvas
+      const canvas = canvasRef.current;
+      if (canvas && selected) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) drawFrame(ctx, canvas, selected, data.script ?? selected.summary, 0);
+      }
+      setStatus('done');
     } catch (err) {
-      setResult({ jobId: '', status: 'error', error: String(err) });
-    } finally {
-      setGenerating(false);
+      setError(String(err));
+      setStatus('error');
     }
   };
 
-  const isVideo = result?.videoPath?.endsWith('.mp4');
-  const isPlaceholder = result?.videoPath?.endsWith('.json');
+  // Draw static frame when article changes
+  useEffect(() => {
+    if (!selected || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    stopPlayback();
+    setStatus('idle');
+    setScript('');
+    setProgress(0);
+    drawFrame(ctx, canvas, selected, '', 0);
+  }, [selected]); // eslint-disable-line
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 page-enter">
+    <div
+      className="max-w-6xl mx-auto px-4 py-8 page-enter"
+      style={{ color: 'var(--text-primary)' }}
+    >
       <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold text-ink-950">🎬 AI Video Generator</h1>
-        <p className="text-ink-400 text-sm mt-1">
-          Article → AI Script → FFmpeg Video · Select an article and click Generate
+        <h1 className="font-display text-3xl font-bold">🎬 AI Video Generator</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+          Article → AI Script → Animated Canvas Video · No FFmpeg required
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-[400px_1fr] gap-6">
-        {/* Article selector */}
-        <div className="bg-white rounded-xl border border-ink-200 overflow-hidden">
-          <div className="p-3 border-b border-ink-100 bg-ink-50">
-            <p className="text-xs font-semibold text-ink-500 uppercase tracking-wide">1. Select Article</p>
+      <div className="grid lg:grid-cols-[340px_1fr] gap-6">
+        {/* Left: Article selector */}
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{ border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)' }}
+        >
+          <div
+            className="p-3 border-b"
+            style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+              1. Select Article
+            </p>
           </div>
           <div className="overflow-y-auto max-h-[70vh]">
             {loading ? (
-              <div className="p-6 text-center text-ink-300">Loading articles…</div>
+              <div className="p-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>Loading…</div>
             ) : articles.map(article => (
               <button
                 key={article.id}
-                onClick={() => { setSelected(article); setResult(null); }}
-                className={`w-full text-left p-4 border-b border-ink-50 hover:bg-ink-50 transition-colors ${selected?.id === article.id ? 'bg-brand-50 border-l-2 border-l-brand-500' : ''}`}>
+                onClick={() => setSelected(article)}
+                className="w-full text-left p-3 border-b transition-colors"
+                style={{
+                  borderColor: 'var(--border-light)',
+                  backgroundColor: selected?.id === article.id ? 'rgba(234,88,12,0.08)' : 'transparent',
+                  borderLeft: selected?.id === article.id ? '3px solid #ea580c' : '3px solid transparent',
+                }}
+              >
                 <div className="flex gap-3">
                   {article.image_url && (
-                    <div className="relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-ink-100">
+                    <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-ink-100">
                       <Image src={article.image_url} alt="" fill className="object-cover" unoptimized />
                     </div>
                   )}
@@ -84,8 +282,12 @@ export default function VideoPage() {
                     <span className={`text-xs px-1.5 py-0.5 rounded capitalize ${getCategoryColor(article.category)}`}>
                       {article.category}
                     </span>
-                    <p className="text-xs font-medium text-ink-800 mt-1 line-clamp-2">{article.title}</p>
-                    <p className="text-xs text-ink-400 mt-1">{timeAgo(article.published_at)}</p>
+                    <p className="text-xs font-medium mt-1 line-clamp-2" style={{ color: 'var(--text-primary)' }}>
+                      {article.title}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      {timeAgo(article.published_at)}
+                    </p>
                   </div>
                 </div>
               </button>
@@ -93,108 +295,126 @@ export default function VideoPage() {
           </div>
         </div>
 
-        {/* Video output */}
+        {/* Right: Video canvas + controls */}
         <div className="space-y-4">
-          {/* Generate button */}
-          <div className="bg-white rounded-xl border border-ink-200 p-5">
-            <p className="text-xs font-semibold text-ink-500 uppercase tracking-wide mb-3">2. Generate Video</p>
-            {selected ? (
-              <div>
-                <p className="text-sm text-ink-700 font-medium mb-1 line-clamp-2">{selected.title}</p>
-                <p className="text-xs text-ink-400 mb-4">{timeAgo(selected.published_at)}</p>
-                <button
-                  onClick={generate}
-                  disabled={generating}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-60 transition-colors">
-                  {generating ? (
-                    <><Loader2 size={16} className="animate-spin" /> Generating Script & Video…</>
-                  ) : (
-                    <><Film size={16} /> Generate Video</>
-                  )}
-                </button>
-                <p className="text-xs text-ink-400 mt-2">
-                  {generating ? 'This may take 15-30 seconds depending on your system' : 'Uses AI to write script, then FFmpeg to render video'}
-                </p>
+          {/* Canvas */}
+          <div className="video-canvas-wrapper w-full" style={{ background: '#000', borderRadius: '0.75rem', overflow: 'hidden' }}>
+            <canvas
+              ref={canvasRef}
+              width={960}
+              height={540}
+              className="w-full h-auto block"
+              style={{ display: 'block' }}
+            />
+            {!selected && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+                <p className="text-4xl mb-3">🎬</p>
+                <p className="text-sm opacity-60">Select an article to preview</p>
               </div>
-            ) : (
-              <p className="text-sm text-ink-400">← Select an article first</p>
             )}
           </div>
 
-          {/* Result */}
-          {result && (
-            <div className="bg-white rounded-xl border border-ink-200 p-5 space-y-4">
-              {/* Status */}
-              <div className="flex items-center gap-2">
-                {result.status === 'done' && <CheckCircle size={18} className="text-green-500" />}
-                {result.status === 'error' && <AlertCircle size={18} className="text-red-500" />}
-                <span className={`text-sm font-medium ${result.status === 'done' ? 'text-green-700' : 'text-red-700'}`}>
-                  {result.status === 'done' ? 'Video Generated' : 'Generation Failed'}
-                </span>
-                {result.provider && (
-                  <span className="ai-badge ml-auto">{result.provider}</span>
+          {/* Progress bar */}
+          {status === 'done' && (
+            <div className="w-full rounded-full h-2" style={{ backgroundColor: 'var(--border-color)' }}>
+              <div
+                className="h-2 rounded-full bg-brand-600 transition-all"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          )}
+
+          {/* Controls row */}
+          <div className="flex flex-wrap gap-3 items-center">
+            {/* Generate button */}
+            <button
+              onClick={generate}
+              disabled={!selected || status === 'scripting'}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
+            >
+              {status === 'scripting' ? (
+                <><Loader2 size={15} className="animate-spin" /> Generating Script…</>
+              ) : (
+                <><Film size={15} /> Generate Video</>
+              )}
+            </button>
+
+            {/* Playback controls */}
+            {status === 'done' && (
+              <>
+                <button
+                  onClick={playing ? stopPlayback : startPlayback}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors hover:bg-brand-50"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                >
+                  {playing ? <><Square size={14} /> Stop</> : <><Play size={14} /> Play</>}
+                </button>
+                <button
+                  onClick={resetVideo}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}
+                >
+                  <RotateCcw size={14} /> Reset
+                </button>
+                <button
+                  onClick={downloadFrame}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors"
+                  style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}
+                >
+                  <Download size={14} /> Save Frame
+                </button>
+                {provider && (
+                  <span className="ai-badge ml-auto">{provider}</span>
                 )}
-              </div>
+              </>
+            )}
+          </div>
 
-              {/* Video player */}
-              {isVideo && result.videoPath && (
-                <div className="rounded-lg overflow-hidden bg-black">
-                  <video controls className="w-full" style={{ maxHeight: '360px' }}>
-                    <source src={result.videoPath} type="video/mp4" />
-                    Your browser does not support video playback.
-                  </video>
-                </div>
-              )}
+          {/* Error */}
+          {error && (
+            <div className="rounded-xl p-4 bg-red-50 border border-red-200 text-sm text-red-700">
+              ⚠️ {error}
+            </div>
+          )}
 
-              {/* Placeholder info (FFmpeg not available) */}
-              {(isPlaceholder || result.status === 'error') && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
-                  <AlertCircle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">FFmpeg Video Generation</p>
-                    <p className="text-xs text-amber-700 mt-1">
-                      {result.error?.includes('ffmpeg') || isPlaceholder
-                        ? 'FFmpeg is not installed on this system. The AI script was generated successfully. Install FFmpeg to enable actual video rendering.'
-                        : result.error}
-                    </p>
-                    <p className="text-xs text-amber-600 mt-1 font-mono">npm install -g ffmpeg  OR  brew install ffmpeg</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Script */}
-              {result.script && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Play size={13} className="text-brand-600" />
-                    <p className="text-xs font-semibold text-ink-600 uppercase tracking-wide">AI-Generated Script</p>
-                  </div>
-                  <div className="bg-ink-50 rounded-lg p-4 text-sm text-ink-700 font-mono leading-relaxed whitespace-pre-wrap border border-ink-200">
-                    {result.script}
-                  </div>
-                </div>
-              )}
+          {/* Script display */}
+          {script && (
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>
+                📜 AI-Generated Broadcast Script
+              </p>
+              <p className="text-sm leading-relaxed font-mono" style={{ color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+                {script}
+              </p>
             </div>
           )}
 
           {/* How it works */}
-          {!result && !generating && (
-            <div className="bg-ink-50 rounded-xl border border-ink-200 p-5">
-              <p className="text-sm font-semibold text-ink-700 mb-3">How the AI Video Pipeline Works</p>
-              <div className="space-y-3">
+          {status === 'idle' && (
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}
+            >
+              <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>
+                How the Video Pipeline Works
+              </p>
+              <div className="space-y-2">
                 {[
-                  { n: '1', title: 'Article Input', desc: 'Select any article from the feed' },
-                  { n: '2', title: 'AI Script Writing', desc: 'AI generates a 60-second broadcast script' },
-                  { n: '3', title: 'FFmpeg Rendering', desc: 'FFmpeg renders a title-card video with text overlay' },
-                  { n: '4', title: 'Video Output', desc: 'Download or play the generated MP4' },
-                ].map(step => (
-                  <div key={step.n} className="flex gap-3">
-                    <div className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                      {step.n}
+                  { n: '1', t: 'Select Article', d: 'Pick any live or seeded news article' },
+                  { n: '2', t: 'AI Script', d: 'AI writes a 60-second broadcast script' },
+                  { n: '3', t: 'Canvas Render', d: 'Animated text + graphics rendered in browser' },
+                  { n: '4', t: 'Play & Download', d: 'Play the animation or save a frame as PNG' },
+                ].map(s => (
+                  <div key={s.n} className="flex gap-3">
+                    <div className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {s.n}
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-ink-800">{step.title}</p>
-                      <p className="text-xs text-ink-500">{step.desc}</p>
+                      <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{s.t}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{s.d}</p>
                     </div>
                   </div>
                 ))}
