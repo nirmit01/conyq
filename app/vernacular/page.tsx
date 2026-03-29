@@ -17,6 +17,8 @@ export default function VernacularPage() {
   const [translating, setTranslating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [provider, setProvider] = useState('');
+  const [urlInput, setUrlInput] = useState('');
+  const [originalTitle, setOriginalTitle] = useState(''); // To display the scraped title
 
   useEffect(() => {
     fetch('/api/articles?limit=8')
@@ -28,21 +30,70 @@ export default function VernacularPage() {
       });
   }, []);
 
+  const translateUrl = async () => {
+    if (!urlInput.trim() || translating) return;
+    
+    // Clear selection so the UI switches to URL mode
+    setSelected(null); 
+    setTranslating(true);
+    setTranslation('');
+    setOriginalTitle('');
+    
+    try {
+      const targetLangName = LANGUAGES.find(l => l.id === targetLang)?.name || targetLang;
+
+      const res = await fetch('/api/translate-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          url: urlInput,
+          targetLanguage: targetLangName 
+        }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || 'Translation failed');
+      
+      setTranslation(data.translation);
+      setProvider(data.provider);
+      setOriginalTitle(data.originalTitle);
+    } catch (err) {
+      console.error(err);
+      setTranslation(`⚠️ ${(err as Error).message}`);
+    } finally {
+      setTranslating(false);
+    }
+  };
   const translate = async () => {
     if (!selected || translating) return;
     setTranslating(true);
     setTranslation('');
+    
     try {
+      // Find the actual language name (e.g., "Hindi", "Tamil", "Bengali")
+      const targetLangName = LANGUAGES.find(l => l.id === targetLang)?.name || targetLang;
+
       const res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ articleId: selected.id, targetLanguage: targetLang }),
+        body: JSON.stringify({ 
+          title: selected.title, 
+          // Pass the content (or fallback to summary if content isn't loaded)
+          content: selected.content || selected.summary,
+          targetLanguage: targetLangName 
+        }),
       });
+      
       const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || 'Translation failed');
+      
       setTranslation(data.translation);
       setProvider(data.provider);
-    } catch {
-      setTranslation('⚠️ Translation failed. Please try again.');
+    } catch (err) {
+      console.error(err);
+      setTranslation('⚠️ Translation failed. Please check your AI API key and try again.');
     } finally {
       setTranslating(false);
     }
@@ -92,6 +143,33 @@ export default function VernacularPage() {
             <div className="p-3 border-b border-ink-100 bg-ink-50">
               <p className="text-xs font-semibold text-ink-500 uppercase tracking-wide">Select Article</p>
             </div>
+            {/* OR Divider */}
+          <div className="flex items-center gap-3 my-2">
+            <hr className="flex-1 border-ink-200" />
+            <span className="text-xs font-semibold text-ink-400 uppercase tracking-widest">OR</span>
+            <hr className="flex-1 border-ink-200" />
+          </div>
+
+          {/* URL Input Section */}
+          <div className="bg-white rounded-xl border border-ink-200 p-4">
+            <p className="text-xs font-semibold text-ink-500 uppercase tracking-wide mb-3">Paste Article URL</p>
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="https://economictimes.com/..."
+              className="w-full px-3 py-2.5 rounded-lg border border-ink-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 mb-3"
+            />
+            <button
+              onClick={translateUrl}
+              disabled={!urlInput.trim() || translating}
+              className="w-full py-2.5 bg-ink-800 text-white rounded-lg font-medium text-sm hover:bg-ink-900 disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
+              {translating && !selected
+                ? <><Loader2 size={16} className="animate-spin" /> Fetching & Translating…</>
+                : `Translate URL`
+              }
+            </button>
+          </div>
             <div className="overflow-y-auto max-h-[50vh]">
               {loading ? (
                 <div className="p-4 text-center text-ink-400 text-sm">Loading…</div>
@@ -180,13 +258,21 @@ export default function VernacularPage() {
               </div>
 
               {/* Original article link */}
-              {selected && (
+              {(selected || originalTitle) && (
                 <div className="p-4 border-t border-ink-100 bg-ink-50">
                   <p className="text-xs text-ink-400 mb-1">Original (English)</p>
-                  <p className="text-sm font-medium text-ink-700 line-clamp-1">{selected.title}</p>
-                  <a href={`/navigator?article=${selected.id}`} className="text-xs text-brand-600 hover:underline">
-                    View AI Briefing →
-                  </a>
+                  <p className="text-sm font-medium text-ink-700 line-clamp-1">
+                    {selected ? selected.title : originalTitle}
+                  </p>
+                  {selected ? (
+                    <a href={`/navigator?article=${selected.id}`} className="text-xs text-brand-600 hover:underline">
+                      View AI Briefing →
+                    </a>
+                  ) : (
+                    <a href={urlInput} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-600 hover:underline">
+                      Read Original Article ↗
+                    </a>
+                  )}
                 </div>
               )}
             </>

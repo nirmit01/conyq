@@ -1,34 +1,61 @@
 // app/api/why-matters/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import { askAI, PROMPTS } from '@/services/ai';
-import type { Article } from '@/lib/types';
-
-const MOCK_WHY: Record<string, string> = {
-  technology: '💡 As a tech enthusiast, this directly affects the AI tools and platforms you use daily.',
-  finance: '🏦 This monetary shift impacts loan rates, savings returns, and investment decisions you face.',
-  markets: '📈 Your portfolio and investment strategy may need recalibration based on this market move.',
-  startups: '🚀 The startup funding climate affects innovation cycles and the products that reach you.',
-  policy: '⚖️ This policy change will shape the business environment and consumer rights in your sector.',
-};
+import { askAI } from '@/services/ai';
 
 export async function POST(req: NextRequest) {
+  // 1. Declare 'interests' OUTSIDE the try block so the catch block can see it!
+  let interests = ['business and finance'];
+
   try {
-    const { articleId, interests } = await req.json();
-    const db = getDb();
-    const row = db.prepare('SELECT title, summary, category FROM articles WHERE id = ?').get(articleId) as (Pick<Article, 'title' | 'summary' | 'category'>) | undefined;
-    if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-    const messages = PROMPTS.whyMatters(row, interests ?? []);
-    const result = await askAI(messages, 150);
-
-    let text = result.text;
-    if (result.provider === 'mock') {
-      text = MOCK_WHY[row.category] ?? `📰 This story is directly relevant to your interest in ${(interests as string[])[0] ?? 'business news'}.`;
+    const body = await req.json();
+    
+    const title = body.article?.title || body.title || 'this news article';
+    const summary = body.article?.summary || body.summary || '';
+    
+    // 2. Update interests if the frontend provided them
+    if (Array.isArray(body.interests) && body.interests.length > 0) {
+      interests = body.interests;
+    } else if (typeof body.interests === 'string' && body.interests.trim() !== '') {
+      interests = [body.interests];
     }
 
-    return NextResponse.json({ text, provider: result.provider });
+    const messages = [
+      {
+        role: 'system' as const,
+        content: `You are a personalized news assistant. Given a user's interests, explain in exactly 1-2 sentences why a news article matters to them personally. Be specific, not generic.`
+      },
+      {
+        role: 'user' as const,
+        content: `User interests: ${interests.join(', ')}.
+Article: "${title}" — ${summary}
+
+Write a 1-2 sentence "Why this matters to you" explanation. Start with an emoji relevant to the topic.`
+      }
+    ];
+
+    const result = await askAI(messages, 300);
+
+    return NextResponse.json({
+      explanation: result.text,
+      provider: result.provider
+    });
+
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.error('[API/why-matters]', err);
+    
+    const errorMessage = (err as Error).message;
+    
+    // Now the catch block can safely access 'interests[0]'!
+    if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('exceeded')) {
+      return NextResponse.json({ 
+        explanation: `💡 Highly relevant to your interest in ${interests[0]}. (AI cooling down to prevent rate limits)`,
+        provider: 'fallback'
+      });
+    }
+
+    return NextResponse.json(
+      { error: 'Failed to generate personalized explanation.' },
+      { status: 500 }
+    );
   }
 }

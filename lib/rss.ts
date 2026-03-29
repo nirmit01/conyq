@@ -146,9 +146,9 @@ export async function fetchRSSFeed(feed: typeof RSS_FEEDS[0]): Promise<RSSArticl
     : `https://api.allorigins.win/get?url=${encodeURIComponent(feed.url)}`;
 
   const res = await fetch(url, {
-    next: { revalidate: 1800 }, // Cache for 30 minutes (Next.js cache)
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MyET/1.0)' },
-  });
+  cache: 'no-store',
+  headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MyET/1.0)' },
+});
 
   if (!res.ok) throw new Error(`RSS fetch failed: ${res.status}`);
 
