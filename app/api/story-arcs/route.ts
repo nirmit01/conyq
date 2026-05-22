@@ -1,34 +1,62 @@
 // app/api/story-arcs/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
 import { askAI } from '@/services/ai';
+
+// Static mock story arcs for serverless deployment
+const STORY_ARCS = [
+  {
+    id: 'arc-ai-india-2024',
+    title: 'India AI Revolution 2024',
+    description: 'Tracking the rise of artificial intelligence adoption across Indian enterprises and government initiatives',
+    article_ids: ['art-001', 'art-003', 'art-007'],
+    entities: [
+      { name: 'Infosys', type: 'Company' },
+      { name: 'TCS', type: 'Company' },
+      { name: 'NASSCOM', type: 'Organisation' },
+      { name: 'Narendra Modi', type: 'Person' },
+      { name: 'OpenAI', type: 'Company' },
+    ],
+    predictions: 'AI adoption in India expected to contribute $500B to GDP by 2030. Expect major policy announcements in Q3.',
+    created_at: 1713004800,
+    updated_at: 1713004800,
+  },
+  {
+    id: 'arc-markets-rally-2024',
+    title: 'Markets Rally on Rate Cut Hopes',
+    description: 'Sensex crosses 85,000 as FIIs return and RBI signals pivot to neutral stance',
+    article_ids: ['art-002', 'art-005', 'art-008'],
+    entities: [
+      { name: 'RBI', type: 'Organisation' },
+      { name: 'Shaktikanta Das', type: 'Person' },
+      { name: 'Sensex', type: 'Index' },
+      { name: 'Tata Motors', type: 'Company' },
+      { name: 'Reliance Jio', type: 'Company' },
+    ],
+    predictions: 'With FIIs returning and rate cuts on the horizon, markets could see 10-15% upside by end of FY25.',
+    created_at: 1713004800,
+    updated_at: 1713004800,
+  },
+  {
+    id: 'arc-ev-push-2024',
+    title: 'India EV Acceleration',
+    description: 'Government launches ₹15,000 Cr EV Mission 2.0 targeting 30% penetration by 2030',
+    article_ids: ['art-006'],
+    entities: [
+      { name: 'Govt of India', type: 'Organisation' },
+      { name: 'Ola Electric', type: 'Company' },
+      { name: 'Bajaj Auto', type: 'Company' },
+      { name: ' kinetic Green', type: 'Company' },
+    ],
+    predictions: 'Two-wheeler EV penetration could reach 15% by 2026, driven by new subsidies and improving charging infra.',
+    created_at: 1713004800,
+    updated_at: 1713004800,
+  },
+];
 
 export async function GET() {
   try {
-    const db = getDb();
-    const rows = db.prepare('SELECT * FROM story_arcs ORDER BY updated_at DESC').all() as Array<{
-      id: string;
-      title: string;
-      description: string | null;
-      article_ids: string;
-      entities: string;
-      predictions: string | null;
-      created_at: number;
-      updated_at: number;
-    }>;
-
-    const arcs = rows.map(r => ({
-      id: r.id,
-      title: r.title,
-      description: r.description,
-      article_ids: JSON.parse(r.article_ids),
-      entities: JSON.parse(r.entities),
-      predictions: r.predictions,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-    }));
-
-    return NextResponse.json({ arcs });
+    // Return static story arcs (no database needed for serverless)
+    return NextResponse.json({ arcs: STORY_ARCS });
   } catch (err) {
     console.error('[API/story-arcs GET]', err);
     return NextResponse.json({ error: 'Failed to fetch story arcs', arcs: [] }, { status: 500 });
@@ -43,7 +71,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No articles provided for analysis.' }, { status: 400 });
     }
 
-    // Define the prompt directly here (instead of importing from ai.ts)
     const messages = [
       {
         role: 'system' as const,
@@ -60,29 +87,25 @@ ${articles.map((a: any, i: number) => {
   return `${i + 1}. [${date}] ${a.title}: ${a.summary}`;
 }).join('\n')}
 
-Return JSON exactly in this format: 
+Return JSON exactly in this format:
 { "narrative": "string", "sentiment_trend": "string", "key_themes": ["string", "string"], "prediction": "string" }`
       }
     ];
 
     const result = await askAI(messages, 1000);
 
-    // Safe JSON parsing (the same bulletproof logic from the Article Analyzer!)
     let parsed;
     try {
       const jsonStart = result.text.indexOf('{');
       const jsonEnd = result.text.lastIndexOf('}');
-      
+
       if (jsonStart !== -1 && jsonEnd !== -1) {
-        // Strip newlines to prevent JSON.parse crashes
         const jsonString = result.text.substring(jsonStart, jsonEnd + 1).replace(/[\n\r]+/g, ' ');
         parsed = JSON.parse(jsonString);
       } else {
         throw new Error("No JSON object found in response");
       }
-    } catch (err) {
-      console.warn("[story-arcs] JSON Parse failed. Using fallback.");
-      // Fallback if the AI messes up the formatting
+    } catch {
       parsed = {
         narrative: "Analysis generated, but the AI formatting was slightly off. Please try again.",
         sentiment_trend: "Unknown",
