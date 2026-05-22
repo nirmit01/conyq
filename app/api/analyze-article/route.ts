@@ -1,5 +1,5 @@
 // app/api/analyze-article/route.ts
-// Fetches article content from a URL and analyzes it for a specific role
+// Fetches article content from a URL and analyzes it for a specific role using Gemini
 
 import { NextRequest, NextResponse } from 'next/server';
 import { askAI } from '@/services/ai';
@@ -25,133 +25,156 @@ const ROLE_BULLET_PROMPTS: Record<Role, string> = {
   student: 'what concepts to learn from this article, how it connects to academic theory, and how to use it in assignments or interviews',
 };
 
-// Simple article content extractor
+// Article content extractor using native https module for better reliability
 async function fetchArticleContent(url: string): Promise<{ title: string; content: string; source: string }> {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'Accept': 'text/html,application/xhtml+xml',
-    },
-    signal: AbortSignal.timeout(8000),
-  });
+  const https = require('https');
+  const http = require('http');
+  const { URL } = require('url');
 
-  if (!res.ok) throw new Error(`Could not fetch article (HTTP ${res.status})`);
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const isHttps = parsedUrl.protocol === 'https:';
+    const lib = isHttps ? https : http;
 
-  const html = await res.text();
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (isHttps ? 443 : 80),
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      timeout: 10000,
+    };
 
-  // Extract title
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  const title = titleMatch ? titleMatch[1].replace(' | Economic Times', '').replace(' - Mint', '').trim() : 'Article';
-
-  // Extract meta description as fallback
-  const metaDesc = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1] ?? '';
-
-  // Extract og:description
-  const ogDesc = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1] ?? '';
-
-  // Extract article body — try common selectors
-  let content = '';
-
-  // Try <article> tag
-  const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-  if (articleMatch) {
-    content = articleMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  }
-
-  // Try common content divs
-  if (!content || content.length < 200) {
-    const contentPatterns = [
-      /<div[^>]+class="[^"]*artText[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-      /<div[^>]+class="[^"]*article-body[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-      /<div[^>]+class="[^"]*story-body[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-      /<div[^>]+class="[^"]*content[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-    ];
-    for (const pattern of contentPatterns) {
-      const match = html.match(pattern);
-      if (match) {
-        const extracted = match[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (extracted.length > content.length) content = extracted;
+    const req = lib.request(options, (res: any) => {
+      // Handle redirects
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        // Follow redirect once
+        const redirectUrl = new URL(res.headers.location, url);
+        fetchArticleContent(redirectUrl.toString()).then(resolve).catch(reject);
+        return;
       }
-    }
-  }
 
-  // Fallback: extract all paragraph text
-  if (!content || content.length < 200) {
-    const paragraphs = [...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)]
-      .map(m => m[1].replace(/<[^>]+>/g, '').trim())
-      .filter(p => p.length > 60);
-    content = paragraphs.join(' ');
-  }
+      if (res.statusCode !== 200) {
+        reject(new Error(`HTTP ${res.statusCode}`));
+        return;
+      }
 
-  // Final fallback
-  if (!content || content.length < 100) {
-    content = ogDesc || metaDesc || 'Article content could not be extracted. Analysis based on title and metadata.';
-  }
+      let html = '';
+      res.on('data', (chunk: Buffer) => { html += chunk.toString(); });
+      res.on('end', () => {
+        try {
+          // Extract title
+          const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+          const title = titleMatch ? titleMatch[1].replace(/&amp;/g, '&').replace(/&ndash;/g, '-').trim() : 'Article';
 
-  // Determine source from URL
-  const hostname = new URL(url).hostname.replace('www.', '');
-  const sourceMap: Record<string, string> = {
-    'economictimes.indiatimes.com': 'Economic Times',
-    'livemint.com': 'Mint',
-    'business-standard.com': 'Business Standard',
-    'thehindu.com': 'The Hindu',
-    'financialexpress.com': 'Financial Express',
-    'moneycontrol.com': 'Moneycontrol',
-    'ndtv.com': 'NDTV',
-    'reuters.com': 'Reuters',
-    'bloomberg.com': 'Bloomberg',
-  };
-  const source = sourceMap[hostname] ?? hostname;
+          // Extract og:title
+          const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1] ?? '';
 
-  return {
-    title,
-    content: content.slice(0, 4000), // Limit for API
-    source,
-  };
-}
+          // Extract meta description
+          const metaDesc = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1] ?? '';
 
-// Mock analysis for when no API key is set
-function getMockAnalysis(role: Role, title: string) {
-  const roleData = {
-    entrepreneur: {
-      summary: `This article examines a significant shift in India's business landscape that carries direct implications for entrepreneurs. The core development — whether regulatory, market-driven, or technological — creates both a threat and an opportunity depending on how quickly founders can adapt. The piece highlights that incumbents are moving slowly, which is often the clearest signal for startups to act.`,
-      bullets: [
-        '**Market Signal:** This trend has been validated by large players, meaning the risk of early-mover failure has dropped — now is the time to build, not study',
-        '**Cost Implication:** Changes described could affect your operational costs within 2-3 quarters; model this into your next board deck',
-        '**Customer Behaviour:** The article implies a shift in what your customers value — review your positioning and messaging against this new reality',
-        '**Funding Angle:** Investors following this space will use this as market validation; it strengthens your fundraising narrative if you operate adjacent to this trend',
-        '**Competitive Window:** Established players are reacting slowly — you have a 6-12 month window before the market consolidates around new norms',
-      ],
-    },
-    investor: {
-      summary: `This article presents material information for portfolio allocation decisions. The developments covered have measurable implications for asset prices across multiple sectors, with the strongest signal pointing to a re-rating opportunity in rate-sensitive financials and a potential headwind for defensives. The macro backdrop described aligns with a risk-on posture for domestic-oriented equities.`,
-      bullets: [
-        '**Direct Equity Impact:** Companies in this sector face either a margin expansion or compression — check your holdings for exposure and size accordingly',
-        '**Sector Rotation Signal:** This development historically precedes a 3-6 month outperformance period for banking and capital goods — consider tactical reallocation',
-        '**Risk Factor:** The article mentions a wildcard that markets haven\'t fully priced — this is your edge; position accordingly before the crowd arrives',
-        '**Valuation Implication:** If the trend holds, consensus EPS estimates for affected companies are 8-12% too low — this is a buy signal ahead of revisions',
-        '**FII Positioning:** Foreign investors will interpret this as a positive macro signal for India; expect incremental inflows into large-cap indices over the next 30 days',
-      ],
-    },
-    student: {
-      summary: `This article is a rich case study in applied economics and business strategy. It illustrates several core frameworks from your curriculum in real-time — from macroeconomic policy transmission to competitive strategy. Reading this alongside your textbooks will help you understand why academic models sometimes predict reality perfectly and why they sometimes fail.`,
-      bullets: [
-        '**Concept: Monetary Policy Transmission** — The article shows how central bank decisions ripple through credit markets, exchange rates, and equity valuations; draw the causal chain for your notes',
-        '**Framework: Porter\'s Five Forces** — Map the industry described in this article to all five forces; this makes excellent essay material and shows you can apply theory to live situations',
-        '**Career Relevance:** The sector featured here is actively hiring; understanding this trend makes you a stronger candidate in interviews for finance, consulting, or product roles',
-        '**Exam Connection:** The macroeconomic dynamics here connect directly to IS-LM and AD-AS models from your macro course — try explaining the article using only those frameworks',
-        '**Vocabulary to Add:** Note the financial terminology used (margins, basis points, FII flows, repo rate) — fluency in this language is expected in any business interview',
-      ],
-    },
-  };
-  return roleData[role];
+          // Extract og:description
+          const ogDesc = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1] ?? '';
+
+          // Extract article body
+          let content = '';
+
+          // Strategy 1: Try article tag
+          const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+          if (articleMatch) {
+            content = articleMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          }
+
+          // Strategy 2: Try common content patterns
+          if (!content || content.length < 200) {
+            const contentPatterns = [
+              /class="[^"]*artText[^"]*"[^>]*>([\s\S]*?)<div/gi,
+              /class="[^"]*article-body[^"]*"[^>]*>([\s\S]*?)<div/gi,
+              /class="[^"]*story-body[^"]*"[^>]*>([\s\S]*?)<div/gi,
+              /class="[^"]*content[^"]*"[^>]*>([\s\S]*?)<div/gi,
+            ];
+            for (const pattern of contentPatterns) {
+              const matches = [...html.matchAll(pattern)];
+              for (const match of matches) {
+                const extracted = match[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                if (extracted.length > content.length && extracted.length > 100) {
+                  content = extracted;
+                }
+              }
+            }
+          }
+
+          // Strategy 3: Extract paragraphs
+          if (!content || content.length < 200) {
+            const paragraphs = [...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)]
+              .map(m => m[1].replace(/<[^>]+>/g, '').trim())
+              .filter(p => p.length > 50 && !p.includes('<script') && !p.includes('<style'));
+            content = paragraphs.join(' ');
+          }
+
+          // Strategy 4: JSON-LD
+          if (!content || content.length < 200) {
+            const jsonLdMatch = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+            if (jsonLdMatch) {
+              try {
+                const jsonLd = JSON.parse(jsonLdMatch[1]);
+                content = jsonLd.articleBody || jsonLd.text || jsonLd.description || '';
+              } catch {}
+            }
+          }
+
+          // Final fallback
+          if (!content || content.length < 100) {
+            content = ogDesc || metaDesc || 'Article content could not be extracted.';
+          }
+
+          // Determine source
+          const hostname = parsedUrl.hostname.replace('www.', '');
+          const sourceMap: Record<string, string> = {
+            'economictimes.indiatimes.com': 'Economic Times',
+            'economictimes.com': 'Economic Times',
+            'livemint.com': 'Mint',
+            'business-standard.com': 'Business Standard',
+            'thehindu.com': 'The Hindu',
+            'financialexpress.com': 'Financial Express',
+            'moneycontrol.com': 'Moneycontrol',
+            'ndtv.com': 'NDTV',
+            'reuters.com': 'Reuters',
+            'bloomberg.com': 'Bloomberg',
+          };
+          const source = sourceMap[hostname] || hostname;
+
+          const finalTitle = ogTitle && title === 'Article' ? ogTitle : title;
+
+          resolve({
+            title: finalTitle,
+            content: content.slice(0, 4000),
+            source,
+          });
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timed out'));
+    });
+
+    req.end();
+  });
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { url, role } = await req.json() as { url: string; role: Role };
 
-    // Validation
     if (!url || !url.trim()) {
       return NextResponse.json({ error: 'Please enter an article URL.' }, { status: 400 });
     }
@@ -159,7 +182,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Please select a valid role.' }, { status: 400 });
     }
 
-    // Validate URL format
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(url.trim().startsWith('http') ? url.trim() : `https://${url.trim()}`);
@@ -167,22 +189,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Please enter a valid article URL (e.g. https://economictimes.com/...)' }, { status: 400 });
     }
 
+    // Block private IPs
+    const hostname = parsedUrl.hostname;
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.') ||
+      hostname.endsWith('.local') ||
+      hostname.startsWith('172.')
+    ) {
+      return NextResponse.json({ error: 'Cannot fetch articles from local URLs.' }, { status: 400 });
+    }
+
     // Fetch article
     let article: { title: string; content: string; source: string };
     try {
       article = await fetchArticleContent(parsedUrl.toString());
-    } catch (fetchErr) {
-      console.warn('[analyze-article] Fetch failed:', fetchErr);
-      // Return mock analysis with URL-derived title
-      const mock = getMockAnalysis(role, parsedUrl.hostname);
+    } catch (fetchErr: any) {
+      console.warn('[analyze-article] Fetch failed:', fetchErr.message);
       return NextResponse.json({
-        ...mock,
-        title: `Article from ${parsedUrl.hostname}`,
-        source: parsedUrl.hostname,
-        url: parsedUrl.toString(),
-        provider: 'mock',
-        note: 'Could not fetch article content directly. Showing example analysis — add your Gemini API key for real analysis.',
-      });
+        error: fetchErr.message || 'Could not fetch article. The website may be blocking requests.',
+        tip: 'Try a direct article URL from Economic Times, Mint, or Business Standard.'
+      }, { status: 400 });
     }
 
     // Build AI prompt
@@ -190,8 +219,8 @@ export async function POST(req: NextRequest) {
       {
         role: 'system' as const,
         content: `${ROLE_ANALYSIS_CONTEXT[role]}
-You produce sharp, actionable analysis — not summaries. Every point you make should be specific to the article content and directly useful to the reader.
-Format your response ONLY as valid JSON (no markdown, no code blocks): 
+You produce sharp, actionable analysis — not summaries. Every point you make should be specific to the article content.
+Format your response ONLY as valid JSON (no markdown code blocks):
 { "summary": "string", "bullets": ["string", "string", "string", "string", "string"] }`,
       },
       {
@@ -206,64 +235,40 @@ Provide:
 1. "summary": A concise 3-4 sentence summary of the article's key points and significance.
 2. "bullets": Exactly 5 bullet points explaining ${ROLE_BULLET_PROMPTS[role]}.
    - Each bullet must START with a bold **Category Label:** (e.g., **Market Signal:**, **Risk Factor:**, **Concept:**)
-   - Each bullet must be specific to THIS article — no generic advice
-   - Each bullet must be 1-2 sentences and immediately actionable or insightful
+   - Each bullet must be specific to THIS article
+   - Each bullet must be 1-2 sentences
 
 Return ONLY the JSON object.`,
       },
     ];
 
-    // Increased token limit to 1500 to ensure the JSON doesn't get cut off mid-sentence
     const result = await askAI(messages, 1500);
 
-    // Parse JSON response safely
-   // Parse JSON response safely
+    // Parse JSON response
     let parsed: { summary: string; bullets: string[] };
     try {
       const jsonStart = result.text.indexOf('{');
       const jsonEnd = result.text.lastIndexOf('}');
-      
+
       if (jsonStart !== -1 && jsonEnd !== -1) {
         let jsonString = result.text.substring(jsonStart, jsonEnd + 1);
-        
-        // Fix #1: Strip out literal newlines which frequently crash JSON.parse
         jsonString = jsonString.replace(/[\n\r]+/g, ' ');
-        
         parsed = JSON.parse(jsonString);
       } else {
         throw new Error("No JSON object found in response");
       }
-      
+
       if (!Array.isArray(parsed.bullets)) {
         parsed.bullets = [String(parsed.bullets || "Bullet points missing")];
       }
-
     } catch (err) {
-  console.warn("[analyze-article] JSON Parse failed, using Smart Fallback extraction.");
-
-  if (result.provider === "mock") {
-    parsed = getMockAnalysis(role, article.title);
-  } else {
-    // Smart fallback: extract text manually if JSON is broken
-    const cleanText = result.text;
-
-    // Extract Summary using Regex
-    let backupSummary = "Analysis completed, but text extraction failed. Please retry.";
-    const sumMatch = cleanText.match(/"summary"\s*:\s*"([\s\S]*?)"\s*,\s*"bullets"/i);
-
-    if (sumMatch) {
-      backupSummary = sumMatch[1].replace(/\\"/g, '"').trim();
-    } else {
-      // Remove braces and excessive whitespace from raw text
-      backupSummary = cleanText.replace(/[{}]/g, "").trim();
+      console.warn("[analyze-article] JSON Parse failed:", err);
+      const cleanText = result.text.replace(/[{}]/g, '').trim();
+      parsed = {
+        summary: cleanText.slice(0, 300) || 'Analysis completed but formatting was unexpected.',
+        bullets: [],
+      };
     }
-
-    parsed = {
-      summary: backupSummary,
-      bullets: [],
-    };
-  }
-}
 
     return NextResponse.json({
       summary: parsed.summary,
@@ -272,12 +277,9 @@ Return ONLY the JSON object.`,
       source: article.source,
       url: parsedUrl.toString(),
       provider: result.provider,
-      note: (result as any).note, // Pass through any notes (like scrape failures)
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('[API/analyze-article]', err);
-    return NextResponse.json({
-      error: 'Analysis failed. Please check the URL and try again.',
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Analysis failed. Please try again.' }, { status: 500 });
   }
 }

@@ -1,121 +1,197 @@
-// app/page.tsx
-import Link from 'next/link';
+// app/page.tsx — News-first homepage
+'use client';
+import { useEffect, useState } from 'react';
+import type { Article } from '@/lib/types';
+import { HeroSection } from '@/components/news/HeroSection';
+import { CategorySection } from '@/components/news/CategorySection';
+import { TrendingSidebar } from '@/components/news/TrendingSidebar';
+import { HeroSkeleton, CategorySectionSkeleton, TrendingSidebarSkeleton } from '@/components/ui/HeroSkeleton';
+import { ArticleCard } from '@/components/news/ArticleCard';
+import { RefreshCw } from 'lucide-react';
 
-const features = [
-  {
-    href: '/newsroom',
-    emoji: '🗞️',
-    title: 'Personalized Newsroom',
-    desc: 'News ranked by your interests with AI-generated "Why this matters to you"',
-    color: 'from-orange-50 to-amber-50 border-orange-200',
-    badge: 'Smart Feed',
-  },
-  {
-    href: '/navigator',
-    emoji: '🧭',
-    title: 'News Navigator',
-    desc: 'AI briefings with TLDR, Key Insights, Impact & Risks. Chat to go deeper.',
-    color: 'from-blue-50 to-indigo-50 border-blue-200',
-    badge: 'AI Briefings',
-  },
-  {
-    href: '/video',
-    emoji: '🎬',
-    title: 'AI Video Generator',
-    desc: 'Turn any article into a broadcast-style video using AI scripts + FFmpeg.',
-    color: 'from-purple-50 to-pink-50 border-purple-200',
-    badge: 'FFmpeg',
-  },
-  {
-    href: '/tracker',
-    emoji: '🔍',
-    title: 'Story Arc Tracker',
-    desc: 'Follow evolving stories with timelines, entities, sentiment & predictions.',
-    color: 'from-green-50 to-teal-50 border-green-200',
-    badge: 'Trending',
-  },
-  {
-    href: '/vernacular',
-    emoji: '🌐',
-    title: 'Vernacular Engine',
-    desc: 'Read news in Hindi, Tamil, or Bengali with contextual AI explanations.',
-    color: 'from-yellow-50 to-orange-50 border-yellow-200',
-    badge: '3 Languages',
-  },
-  {
-    href: '/chatbot',
-    emoji: '💬',
-    title: 'AI Chatbot',
-    desc: 'Ask anything about business, markets, and economics — context-aware Q&A.',
-    color: 'from-rose-50 to-red-50 border-rose-200',
-    badge: 'Always On',
-  },
-];
+const MAIN_CATEGORIES = ['technology', 'markets', 'finance', 'startups', 'policy'];
 
 export default function HomePage() {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [meta, setMeta] = useState<{ live: boolean; total: number }>({ live: false, total: 0 });
+
+  const fetchArticles = async (showRefresh = false) => {
+    if (showRefresh) setRefreshing(true);
+    try {
+      const res = await fetch('/api/articles?limit=50');
+      const data = await res.json();
+      setArticles(data.articles ?? []);
+      setMeta(data.meta ?? { live: false, total: 0 });
+    } catch (err) {
+      console.error('Failed to fetch articles', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchArticles();
+  }, []);
+
+  const handleRefresh = () => fetchArticles(true);
+
+  // Group articles by category for category sections
+  const byCategory = MAIN_CATEGORIES.reduce((acc, cat) => {
+    acc[cat] = articles.filter(a => a.category === cat).slice(0, 8);
+    return acc;
+  }, {} as Record<string, Article[]>);
+
+  // Non-featured articles for the grid below category sections
+  const featuredIds = new Set([
+    articles[0]?.id,
+    articles[1]?.id,
+    articles[2]?.id,
+    ...Object.values(byCategory).flatMap(a => a.slice(0, 3)).map(a => a.id),
+  ]);
+  const remainingArticles = articles.filter(a => !featuredIds.has(a.id));
+
   return (
     <div className="page-enter">
-      {/* Hero */}
-      <section className="bg-white border-b border-ink-200 py-16 px-4">
-        <div className="max-w-4xl mx-auto text-center">
-          <p className="ai-badge mb-4 mx-auto w-fit">AI-Native · Personalized · Multilingual</p>
-          <h1 className="font-display text-5xl md:text-6xl font-bold text-ink-950 mb-4 leading-tight">
-            My <span className="text-brand-600">ET</span>
-          </h1>
-          <p className="text-xl text-ink-500 mb-2 font-light">AI Native News Experience</p>
-          <p className="text-ink-400 max-w-xl mx-auto mt-3 leading-relaxed">
-            Your personalized business newsroom — powered by AI to brief, explain, translate, and visualise the stories that matter most to you.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3 justify-center">
-            <Link href="/newsroom"
-              className="px-6 py-3 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors shadow-sm">
-              Open My Newsroom →
-            </Link>
-            <Link href="/navigator"
-              className="px-6 py-3 bg-white border border-ink-300 text-ink-700 rounded-lg font-medium hover:bg-ink-50 transition-colors">
-              Try AI Briefings
-            </Link>
+      {/* Page header with live indicator */}
+      <div
+        className="border-b"
+        style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+      >
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              Top Stories
+            </h1>
+            {meta.live && (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: '#22c55e15', color: '#22c55e' }}>
+                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                Live
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs hidden sm:block" style={{ color: 'var(--text-muted)' }}>
+              {meta.total} articles
+            </span>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+              Refresh
+            </button>
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* Feature Grid */}
-      <section className="max-w-6xl mx-auto px-4 py-12">
-        <h2 className="font-display text-2xl text-ink-800 mb-8 text-center">Everything in one newsroom</h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {features.map(f => (
-            <Link key={f.href} href={f.href}
-              className={`block rounded-xl border bg-gradient-to-br ${f.color} p-6 hover:shadow-md transition-all group`}>
-              <div className="flex items-start justify-between mb-3">
-                <span className="text-3xl">{f.emoji}</span>
-                <span className="text-xs font-medium px-2 py-1 bg-white/70 rounded-full text-ink-500">{f.badge}</span>
-              </div>
-              <h3 className="font-display text-lg font-semibold text-ink-900 mb-2 group-hover:text-brand-700 transition-colors">
-                {f.title}
-              </h3>
-              <p className="text-sm text-ink-500 leading-relaxed">{f.desc}</p>
-              <p className="mt-4 text-sm font-medium text-brand-600 group-hover:underline">Explore →</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* Stats bar */}
-      <section className="bg-ink-950 text-white py-8">
-        <div className="max-w-4xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-          {[
-            { n: '8+', label: 'Live Articles' },
-            { n: '6', label: 'AI Features' },
-            { n: '3', label: 'Indian Languages' },
-            { n: '∞', label: 'Questions Answered' },
-          ].map(s => (
-            <div key={s.label}>
-              <p className="font-display text-3xl font-bold text-brand-400">{s.n}</p>
-              <p className="text-ink-300 text-sm mt-1">{s.label}</p>
+      {loading ? (
+        <>
+          <HeroSkeleton />
+          {MAIN_CATEGORIES.slice(0, 2).map(cat => (
+            <div key={cat} className="max-w-7xl mx-auto px-4 pb-8">
+              <CategorySectionSkeleton />
             </div>
           ))}
+        </>
+      ) : articles.length === 0 ? (
+        <div className="max-w-7xl mx-auto px-4 py-16 text-center">
+          <p className="text-lg font-display" style={{ color: 'var(--text-muted)' }}>
+            No articles available. Try refreshing.
+          </p>
+          <button
+            onClick={handleRefresh}
+            className="mt-4 px-5 py-2 rounded-xl text-sm font-medium text-white"
+            style={{ backgroundColor: 'var(--color-brand)' }}
+          >
+            Refresh
+          </button>
         </div>
-      </section>
+      ) : (
+        <>
+          {/* Hero Section */}
+          <HeroSection articles={articles.slice(0, 3)} />
+
+          {/* Category Sections + Trending Sidebar */}
+          <div className="max-w-7xl mx-auto px-4 pb-4">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+              {/* Main content */}
+              <div className="lg:col-span-3 space-y-10">
+                {MAIN_CATEGORIES.map(cat => byCategory[cat]?.length > 0 && (
+                  <CategorySection key={cat} category={cat} articles={byCategory[cat]} />
+                ))}
+
+                {/* More articles grid */}
+                {remainingArticles.length > 0 && (
+                  <section>
+                    <h2 className="font-display text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
+                      More Stories
+                    </h2>
+                    <div className={`grid gap-4 ${remainingArticles.length === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+                      {remainingArticles.slice(0, 6).map(article => (
+                        <ArticleCard key={article.id} article={article} />
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+
+              {/* Sidebar */}
+              <div className="space-y-6">
+                <TrendingSidebar articles={articles} />
+
+                {/* Quick links card */}
+                <div
+                  className="rounded-2xl p-5"
+                  style={{
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
+                  }}
+                >
+                  <h3 className="font-display text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>
+                    Explore Features
+                  </h3>
+                  <div className="space-y-2">
+                    {[
+                      { href: '/navigator', label: 'AI Navigator', desc: 'Get AI briefings on any story' },
+                      { href: '/briefing', label: 'Daily Briefing', desc: 'Your 3-minute news digest' },
+                      { href: '/analyzer', label: 'Article Analyzer', desc: 'Analyze any article with AI' },
+                      { href: '/vernacular', label: 'Read in Hindi', desc: 'Translate to Indian languages' },
+                    ].map(link => (
+                      <a
+                        key={link.href}
+                        href={link.href}
+                        className="flex items-center justify-between p-3 rounded-xl transition-colors hover:bg-ink-50 group"
+                        style={{ border: '1px solid var(--border-color)' }}
+                      >
+                        <div>
+                          <p className="text-sm font-semibold group-hover:text-brand-700 transition-colors" style={{ color: 'var(--text-primary)' }}>
+                            {link.label}
+                          </p>
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            {link.desc}
+                          </p>
+                        </div>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="group-hover:translate-x-1 transition-transform" style={{ color: 'var(--text-muted)' }}>
+                          <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

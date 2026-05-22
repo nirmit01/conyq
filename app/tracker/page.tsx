@@ -24,15 +24,27 @@ export default function TrackerPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/story-arcs').then(r => r.json()),
-      fetch('/api/articles?limit=20').then(r => r.json()),
+      fetch('/api/story-arcs').then(async (r) => {
+        if (!r.ok) throw new Error('Failed to fetch story arcs');
+        const data = await r.json();
+        return data.arcs ?? [];
+      }),
+      fetch('/api/articles?limit=20').then(async (r) => {
+        if (!r.ok) throw new Error('Failed to fetch articles');
+        const data = await r.json();
+        return data.articles ?? [];
+      }),
     ]).then(([arcData, artData]) => {
-      setArcs(arcData.arcs);
-      setArticles(artData.articles);
-      if (arcData.arcs.length) selectArc(arcData.arcs[0], artData.articles);
+      setArcs(arcData);
+      setArticles(artData);
+      if (arcData.length) selectArc(arcData[0], artData);
+      setLoading(false);
+    }).catch(() => {
+      setArcs([]);
+      setArticles([]);
       setLoading(false);
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectArc = async (arc: StoryArc, allArticles?: Article[]) => {
     setSelected(arc);
@@ -49,18 +61,27 @@ export default function TrackerPage() {
       const res = await fetch('/api/story-arcs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ arcId: arc.id }),
+        body: JSON.stringify({ articles: arcArticles }),
       });
       const data = await res.json();
-      setAnalysis({
-        ...data.analysis,
-        sentiment_trend: data.analysis.sentiment_trend || sentimentLabel.label,
-      });
+      if (data.error) {
+        setAnalysis({
+          narrative: arc.description ?? 'Story arc analysis in progress.',
+          sentiment_trend: sentimentLabel.label,
+          key_themes: arc.entities?.map((e: any) => e.name) ?? [],
+          prediction: arc.predictions ?? 'Predictions unavailable.',
+        });
+      } else {
+        setAnalysis({
+          ...data,
+          sentiment_trend: data.sentiment_trend || sentimentLabel.label,
+        });
+      }
     } catch {
       setAnalysis({
         narrative: arc.description ?? 'Story arc analysis in progress.',
         sentiment_trend: sentimentLabel.label,
-        key_themes: arc.entities.map(e => e.name),
+        key_themes: arc.entities?.map((e: any) => e.name) ?? [],
         prediction: arc.predictions ?? 'Predictions unavailable.',
       });
     } finally {
@@ -75,7 +96,10 @@ export default function TrackerPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 page-enter">
       <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold text-ink-950">🔍 Story Arc Tracker</h1>
+        <h1 className="font-display text-3xl font-bold text-ink-950 flex items-center gap-2">
+          <TrendingUp size={28} className="text-brand-600" />
+          Story Arc Tracker
+        </h1>
         <p className="text-ink-400 text-sm mt-1">Follow evolving stories — timelines, entities, sentiment & AI predictions</p>
       </div>
 
@@ -198,11 +222,24 @@ export default function TrackerPage() {
                                 <span className="text-xs text-ink-400">{timeAgo(article.published_at)}</span>
                               </div>
                               <p className="text-sm font-medium text-ink-800 line-clamp-2">{article.title}</p>
-                              <Link
-                                href={`/navigator?article=${article.id}`}
-                                className="text-xs text-brand-600 hover:underline mt-1 inline-block">
-                                View AI Briefing →
-                              </Link>
+                              <div className="flex items-center gap-3 mt-1">
+                                <Link
+                                  href={`/navigator?article=${article.id}`}
+                                  className="text-xs text-brand-600 hover:underline flex items-center gap-1">
+                                  AI Briefing
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                                </Link>
+                                {article.url && (
+                                  <a
+                                    href={article.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-ink-500 hover:text-brand-600 transition-colors flex items-center gap-1">
+                                    Read
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+                                  </a>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );

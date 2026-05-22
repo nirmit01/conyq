@@ -1,6 +1,39 @@
 // app/api/story-arcs/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { getDb } from '@/lib/db';
 import { askAI } from '@/services/ai';
+
+export async function GET() {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM story_arcs ORDER BY updated_at DESC').all() as Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      article_ids: string;
+      entities: string;
+      predictions: string | null;
+      created_at: number;
+      updated_at: number;
+    }>;
+
+    const arcs = rows.map(r => ({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      article_ids: JSON.parse(r.article_ids),
+      entities: JSON.parse(r.entities),
+      predictions: r.predictions,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    }));
+
+    return NextResponse.json({ arcs });
+  } catch (err) {
+    console.error('[API/story-arcs GET]', err);
+    return NextResponse.json({ error: 'Failed to fetch story arcs', arcs: [] }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {

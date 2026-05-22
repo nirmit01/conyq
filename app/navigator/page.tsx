@@ -48,11 +48,15 @@ function NavigatorInner() {
       const res = await fetch('/api/briefing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ articleId: article.id }),
+        body: JSON.stringify({ article }),
       });
       const data = await res.json();
-      setBriefing(data.briefing);
-      setProvider(data.provider);
+      if (data.error) {
+        setBriefing(`⚠️ ${data.error}`);
+      } else {
+        setBriefing(data.briefing || 'No briefing generated.');
+      }
+      setProvider(data.provider || '');
     } catch {
       setBriefing('⚠️ Failed to generate briefing. Please try again.');
     } finally {
@@ -65,7 +69,7 @@ function NavigatorInner() {
       stopSpeaking();
       setSpeaking(false);
     } else {
-      const textToRead = selected ? `${selected.title}. ${briefing.replace(/[#*]/g, '')}` : '';
+      const textToRead = selected ? `${selected.title}. ${(briefing || '').replace(/[#*]/g, '')}` : '';
       speakText({ text: textToRead });
       setSpeaking(true);
     }
@@ -138,12 +142,23 @@ function NavigatorInner() {
                 </div>
               )}
 
-              <div className="p-4 border-b border-ink-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="p-4 border-b border-ink-100 flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="ai-badge">
                     <Sparkles size={11} /> AI Briefing
                     {provider && <span className="opacity-60">· {provider}</span>}
                   </span>
+                  {selected?.url && (
+                    <a
+                      href={selected.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium text-ink-500 hover:text-brand-600 transition-colors flex items-center gap-1 px-2 py-1 rounded border border-ink-200 hover:border-brand-300"
+                    >
+                      Read Full Article
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+                    </a>
+                  )}
                   {sentiment && (
                     <span className={`text-xs font-medium ${sentiment.color}`}>
                       {sentiment.label}
@@ -186,7 +201,7 @@ function NavigatorInner() {
         {/* Chat panel */}
         <div className="bg-white rounded-xl border border-ink-200 overflow-hidden" style={{ height: '80vh' }}>
           <div className="p-3 border-b border-ink-100 bg-ink-50">
-            <p className="text-xs font-semibold text-ink-500 uppercase tracking-wide">💬 Ask Follow-up Questions</p>
+            <p className="text-xs font-semibold text-ink-500 uppercase tracking-wide">Ask Follow-up Questions</p>
           </div>
           <div className="h-[calc(100%-44px)]">
             <ChatInterface

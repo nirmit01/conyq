@@ -20,7 +20,7 @@ export function ArticleCard({ article, whyMatters, showWhyMatters }: Props) {
   };
 
   return (
-    <article className="bg-white rounded-xl border border-ink-200 overflow-hidden hover:shadow-md transition-all group animate-fade-in">
+    <article className="bg-white rounded-xl border border-ink-200 overflow-hidden hover:shadow-md transition-all group animate-fade-in card-lift">
       {/* Image */}
       {article.image_url && (
         <div className="relative h-44 overflow-hidden bg-ink-100">
@@ -47,11 +47,19 @@ export function ArticleCard({ article, whyMatters, showWhyMatters }: Props) {
         </div>
 
         {/* Title */}
-        <Link href={`/navigator?article=${article.id}`}>
-          <h2 className="font-display text-base font-semibold text-ink-900 leading-snug mb-2 group-hover:text-brand-700 transition-colors line-clamp-3">
-            {article.title}
-          </h2>
-        </Link>
+        {article.url ? (
+          <a href={article.url} target="_blank" rel="noopener noreferrer">
+            <h2 className="font-display text-base font-semibold text-ink-900 leading-snug mb-2 group-hover:text-brand-700 transition-colors line-clamp-3">
+              {article.title}
+            </h2>
+          </a>
+        ) : (
+          <Link href={`/navigator?article=${article.id}`}>
+            <h2 className="font-display text-base font-semibold text-ink-900 leading-snug mb-2 group-hover:text-brand-700 transition-colors line-clamp-3">
+              {article.title}
+            </h2>
+          </Link>
+        )}
 
         {/* Summary */}
         <p className="text-sm text-ink-500 leading-relaxed line-clamp-2 mb-3">
@@ -83,9 +91,20 @@ export function ArticleCard({ article, whyMatters, showWhyMatters }: Props) {
             </button>
             <Link
               href={`/navigator?article=${article.id}`}
-              className="text-xs font-medium text-brand-600 hover:underline">
-              AI Briefing →
+              className="text-xs font-semibold text-brand-600 hover:underline flex items-center gap-1">
+              AI Briefing
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </Link>
+            {article.url && (
+              <a
+                href={article.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-ink-500 hover:text-brand-600 transition-colors flex items-center gap-1">
+                Read
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+              </a>
+            )}
           </div>
         </div>
       </div>

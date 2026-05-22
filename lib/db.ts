@@ -5,7 +5,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const DB_PATH = process.env.DATABASE_PATH || './data/my-et.db';
+const DB_PATH = process.env.DATABASE_PATH || './data/conyq.db';
 
 let _db: Database.Database | null = null;
 
@@ -25,18 +25,19 @@ export function getDb(): Database.Database {
 }
 
 function initSchema(db: Database.Database) {
+  // Create tables with all required columns (including auth columns)
   db.exec(`
-    -- Users table
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL DEFAULT 'Guest',
-      interests TEXT NOT NULL DEFAULT '[]',   -- JSON array of interest tags
+      email TEXT NOT NULL DEFAULT '',
+      password_hash TEXT NOT NULL DEFAULT '',
+      interests TEXT NOT NULL DEFAULT '[]',
       created_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
-    -- Insert default user if not exists
-    INSERT OR IGNORE INTO users (id, name, interests)
-    VALUES ('default', 'Guest Reader', '["technology","finance","markets","startups"]');
+    INSERT OR IGNORE INTO users (id, name, email, password_hash, interests)
+    VALUES ('default', 'Guest Reader', 'default@placeholder.local', '', '["technology","finance","markets","startups"]');
 
     -- Articles table (cached / seeded articles)
     CREATE TABLE IF NOT EXISTS articles (
@@ -99,6 +100,48 @@ function initSchema(db: Database.Database) {
   // Seed sample articles if table is empty
   const count = (db.prepare('SELECT COUNT(*) as n FROM articles').get() as { n: number }).n;
   if (count === 0) seedArticles(db);
+
+  // Create rate_limits table for auth rate limiting
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT NOT NULL,
+      window_start INTEGER NOT NULL,
+      count INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (key, window_start)
+    );
+  `);
+
+  // Create auth_sessions table for tracking active sessions
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      token_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+  `);
+
+  // Create pending_registrations for OTP-based signup
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pending_registrations (
+      email TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      otp TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+  `);
+
+  // Create login_otps for OTP-based login
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS login_otps (
+      email TEXT NOT NULL,
+      otp TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+  `);
 }
 
 function seedArticles(db: Database.Database) {

@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
           category: f.category,
           tags: f.tags,
           source: f.source,
+          url: f.sourceUrl,
           image_url: f.image_url,
           published_at: f.published_at,
           sentiment: f.sentiment,

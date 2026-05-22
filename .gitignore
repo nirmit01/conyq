@@ -5,3 +5,5 @@ node_modules/
 public/generated/
 .DS_Store
 *.log
+
+/lib/generated/prisma

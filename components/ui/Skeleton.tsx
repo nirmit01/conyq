@@ -7,7 +7,10 @@ export function Skeleton({ className }: { className?: string }) {
 
 export function ArticleSkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-ink-200 overflow-hidden">
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    >
       <Skeleton className="h-44 w-full rounded-none" />
       <div className="p-4 space-y-3">
         <div className="flex justify-between">

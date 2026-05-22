@@ -1,0 +1,82 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id
+  name         String   @default("Guest")
+  email        String   @unique @default("")
+  passwordHash String   @map("password_hash") @default("")
+  interests    String   @default("[]")
+  createdAt    Int      @map("created_at")
+  chatSessions ChatSession[]
+  bookmarks    Bookmark[]
+}
+
+model Article {
+  id           String   @id
+  title        String
+  summary      String
+  content      String
+  category     String
+  tags         String   @default("[]")
+  source       String   @default("ET")
+  imageUrl     String?  @map("image_url")
+  publishedAt  Int      @map("published_at")
+  sentiment    Float    @default(0)
+  viewCount    Int      @default(0) @map("view_count")
+  chatSessions ChatSession[]
+  bookmarks    Bookmark[]
+  storyArcs    StoryArc @relation("ArcArticles")
+}
+
+model StoryArc {
+  id          String    @id
+  title       String
+  description String?
+  articleIds  String    @map("article_ids") @default("[]")
+  entities    String    @default("[]")
+  predictions String?
+  createdAt   Int       @map("created_at")
+  updatedAt   Int       @map("updated_at")
+  articles    Article[] @relation("ArcArticles")
+}
+
+model ChatSession {
+  id        String   @id
+  userId    String   @map("user_id")
+  articleId String?  @map("article_id")
+  messages  String   @default("[]")
+  createdAt Int      @map("created_at")
+  user      User     @relation(fields: [userId], references: [id])
+  article   Article? @relation(fields: [articleId], references: [id])
+}
+
+model GeneratedVideo {
+  id        String   @id
+  articleId String   @map("article_id")
+  script    String?
+  audioPath String?  @map("audio_path")
+  videoPath String?  @map("video_path")
+  status    String   @default("pending")
+  createdAt Int      @map("created_at")
+}
+
+model Bookmark {
+  id        Int    @id @default(autoincrement())
+  userId    String @map("user_id")
+  articleId String @map("article_id")
+  createdAt Int    @map("created_at")
+  user      User   @relation(fields: [userId], references: [id])
+  article   Article @relation(fields: [articleId], references: [id])
+
+  @@unique([userId, articleId])
+}

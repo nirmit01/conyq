@@ -1,6 +1,5 @@
 // app/api/daily-briefing/route.ts
 // Generates a role-specific 3-minute daily news briefing
-// Uses today's top RSS articles as context
 
 import { NextRequest, NextResponse } from 'next/server';
 import { askAI } from '@/services/ai';
@@ -52,113 +51,6 @@ const ROLE_CONTEXT: Record<Role, {
   },
 };
 
-// Fallback mock briefings per role
-const MOCK_BRIEFINGS: Record<Role, string> = {
-  entrepreneur: `# 🚀 Your 3-Minute Entrepreneur Briefing
-
-**Good morning, Founder.** Here's what matters to your business today.
-
----
-
-## 🔑 The Big Picture
-India's growth trajectory continues to favour digital-first businesses. With inflation cooling and the RBI signalling a potential rate pivot, credit conditions for SMEs and startups could ease meaningfully in the next two quarters — a significant tailwind if you're planning to raise debt or expand.
-
-## 💡 Opportunity Signals
-**AI adoption is accelerating faster than hiring.** Large enterprises are allocating significant budget to AI tools, but implementation expertise is scarce. If you're building in the B2B AI tooling space, enterprise appetite has rarely been stronger.
-
-**EV ecosystem gaps remain wide.** The government's ₹15,000 Cr EV push creates second-order opportunities beyond just vehicle manufacturing — charging infrastructure, battery management software, fleet telematics, and financing products are all underserved.
-
-## ⚡ Watch Closely
-Regulatory changes in fintech lending norms could affect customer acquisition costs if you rely on BNPL or credit-led growth loops. Review your unit economics under a tighter credit scenario.
-
-## 📊 Market Pulse
-- Startup funding recovered 23% in Q3 — late-stage deals dominate, but seed activity is picking up
-- B2B SaaS multiples stabilising around 6-8x ARR for profitable companies
-- Southeast Asia expansion paths opening up for Indian SaaS founders
-
-## ✅ Your Action Items
-1. **Reassess your AI stack** — are you using AI to reduce headcount costs or drive revenue? The market rewards the latter
-2. **Map the EV opportunity** — even non-EV businesses should audit how electrification affects their supply chain
-3. **Stress-test your CAC** — model a scenario where credit costs rise 200bps for your customers
-
----
-*Briefing covers top stories from the last 24 hours · Estimated read: 3 minutes*`,
-
-  investor: `# 📈 Your 3-Minute Investor Briefing
-
-**Good morning.** Here's the market intelligence that moves portfolios today.
-
----
-
-## 🎯 The Macro Setup
-The RBI's shift to a neutral stance is the single most important macro development of the quarter. Markets are pricing in 50-75bps of cuts through 2025. This changes the calculus for rate-sensitive sectors: banking, real estate, and NBFCs all look more interesting than they did six months ago.
-
-## 📊 Sectoral Signals
-
-**Overweight thesis strengthening:**
-- **IT Services** — AI adoption tailwinds, deal wins accelerating post-wage cycle normalisation
-- **Auto** — JLR margin expansion proves Indian auto can compete globally; EV transition creating winners
-- **Banking** — Credit costs near cyclical lows; liability franchise advantage compounds
-
-**Underweight / watch:**
-- **Consumer Staples** — Rural recovery slower than urban; input costs may inflate if monsoon disappoints
-- **Metals** — China demand uncertainty caps the upside; watch inventory cycles closely
-
-## 🌐 FII Watch
-Foreign flows turned positive last week at ₹10,400 Cr in a single session — the highest in 14 months. This follows US Fed's 50bps cut signalling. Sustained FII buying at this level could push Nifty to test 26,500 in the near term.
-
-## ⚠️ Risk Factors
-- Valuations at 21x forward earnings leave little room for earnings misses
-- Geopolitical risk (Middle East, Taiwan Strait) could trigger risk-off at any point
-- Crude oil above $90 would import inflation and pressure the RBI
-
-## ✅ Portfolio Moves to Consider
-1. **Add rate-sensitive exposure** — HDFC Bank, SBI, top-tier NBFCs on dips
-2. **Review your IT allocation** — Q2 results will be the tell; don't chase before earnings
-3. **Keep 8-10% cash** — the correction risk is real at these valuations
-
----
-*Briefing covers top stories from the last 24 hours · Estimated read: 3 minutes*`,
-
-  student: `# 📚 Your 3-Minute Student Briefing
-
-**Good morning, Scholar.** Today's news is a live classroom — here's what to learn from it.
-
----
-
-## 🧠 The Big Concept Today: Monetary Policy Transmission
-The RBI held rates at 6.5% but changed its stance to "neutral." This is a perfect real-world example of **forward guidance** — a tool central banks use to influence expectations without actually changing rates yet.
-
-**Why it matters for your studies:**
-This bridges macroeconomics theory (IS-LM models, Taylor Rule) with market reality. The bond market moved before any rate was actually cut — prices reflect expectations, not just current facts.
-
-## 📖 Case Study: Infosys AI Strategy
-Infosys announcing ₹10,000 Cr AI revenue target is a textbook **Blue Ocean Strategy** play — they're not just competing in existing markets, they're trying to define a new category (enterprise AI services).
-
-**Connect this to:**
-- Porter's Five Forces: How does AI change the competitive dynamics of IT services?
-- BCG Matrix: Which of Infosys's business units are now Stars vs Cash Cows?
-- Agency theory: How do you align 200,000 employees around an AI transformation?
-
-## 💼 Career Intelligence
-- **Demand is surging** for roles at the intersection of finance + technology
-- Data Science and AI roles in BFSI sector up 40% YoY
-- MBA applications to IIMs up 18% — competition for top roles intensifying
-
-## 📰 Vocabulary Builder
-- **FII (Foreign Institutional Investor):** Large foreign funds that buy Indian stocks
-- **EBIT Margin:** Earnings Before Interest & Tax as % of revenue — measures operational efficiency
-- **Repo Rate:** The rate at which RBI lends to banks — the lever for controlling inflation
-
-## ✅ Study Actions
-1. **Write a 200-word analysis** of why Sensex crossing 85,000 matters (or doesn't) for the average Indian
-2. **Map Jio's international expansion** to the Uppsala Internationalisation Model you studied
-3. **Quiz yourself:** What's the difference between WPI and CPI inflation? (Hint: today's news mentions both)
-
----
-*Briefing covers top stories from the last 24 hours · Estimated read: 3 minutes*`,
-};
-
 export async function POST(req: NextRequest) {
   try {
     const { role } = await req.json() as { role: Role };
@@ -168,6 +60,9 @@ export async function POST(req: NextRequest) {
     }
 
     const ctx = ROLE_CONTEXT[role];
+    const today = new Date().toLocaleDateString('en-IN', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
 
     // Fetch today's top articles for context
     let newsContext = '';
@@ -181,18 +76,11 @@ export async function POST(req: NextRequest) {
       newsContext = 'Today\'s top Indian business news covering markets, technology, startups, policy and geopolitics.';
     }
 
-
-
-    const today = new Date().toLocaleDateString('en-IN', {
-      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    });
-
     const messages = [
       {
         role: 'system' as const,
-        content: `You are a senior editor at the Economic Times of India, writing a comprehensive, highly detailed daily news briefing.
-You write with authority, clarity, and sharp insight.
-Format using Markdown. Use headers, bold text, and bullet points effectively.`,
+        content: `You are a senior editor at the Economic Times of India, writing a comprehensive daily news briefing.
+Write with authority, clarity, and sharp insight. Format using Markdown. Use headers, bold text, and bullet points effectively.`,
       },
       {
         role: 'user' as const,
@@ -209,29 +97,15 @@ ${newsContext}
 Write a complete, structured briefing following exactly this format:
 
 1. "The Big Picture" (2-3 sentences summarizing the overall macro mood today).
-2. "Top Stories & Impact" - THIS IS THE MOST IMPORTANT SECTION. You must analyze EVERY SINGLE news story provided in the context above. Do not skip any. For EACH story, provide:
+2. "Top Stories & Impact" - analyze EVERY SINGLE news story provided. For EACH story, provide:
    - A bold headline with an emoji.
    - 1-2 sentences summarizing what happened.
-   - A NEW, separate paragraph starting with **The ${ctx.label} Angle:** 1-2 sentences explaining EXACTLY how this specific news affects them, their portfolio, their business, or their studies.
-3. "Your Action Items" — exactly 3 specific, concrete actions they should take today based on the news.
-
-Make it comprehensive and detailed. Do not skip any of the provided news context.`,
+   - A NEW, separate paragraph starting with **The ${ctx.label} Angle:** explaining how this affects them.
+3. "Your Action Items" — exactly 3 specific, concrete actions they should take today.`,
       },
     ];
 
-    // INCREASED TOKEN LIMIT: Changed from 1200 to 2500 to allow for much longer, detailed responses
     const result = await askAI(messages, 2500);
-
-    // If mock response, use our rich pre-written mock
-    if (result.provider === 'mock') {
-      return NextResponse.json({
-        briefing: MOCK_BRIEFINGS[role],
-        role: ctx.label,
-        provider: 'mock',
-        date: today,
-        article_count: 0,
-      });
-    }
 
     return NextResponse.json({
       briefing: result.text,

@@ -9,6 +9,7 @@ export interface Article {
   category: string;
   tags: string[];
   source: string;
+  url?: string;
   image_url?: string;
   published_at: number; // Unix timestamp
   sentiment: number;    // -1 to 1

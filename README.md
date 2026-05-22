@@ -1,4 +1,4 @@
-# My ET — AI Native News Experience
+# Conyq — AI Native News Experience
 
 A full-stack, AI-powered business news platform inspired by the Economic Times.
 
@@ -68,7 +68,7 @@ sudo apt install ffmpeg
 ## Project Structure
 
 ```
-my-et/
+conyq/
 ├── app/
 │   ├── api/                  # API routes
 │   ├── newsroom/             # Personalized feed
@@ -99,7 +99,7 @@ my-et/
 
 ## Database
 
-SQLite database is auto-created at `./data/my-et.db` on first run. It includes:
+SQLite database is auto-created at `./data/conyq.db` on first run. It includes:
 - 8 seeded articles from Indian business news
 - 1 story arc (India AI Revolution 2024)
 - Default user profile with interests
